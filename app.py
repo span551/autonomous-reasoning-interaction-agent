@@ -51,7 +51,19 @@ h1,h2,h3{font-family:'Space Mono',monospace;}
 .groq-badge{display:inline-flex;align-items:center;gap:6px;background:#1a1040;border:1px solid #3d2e80;border-radius:8px;padding:6px 12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent2);}
 .stButton>button{font-family:'Space Mono',monospace!important;font-size:12px!important;letter-spacing:.05em!important;background:var(--accent)!important;color:white!important;border:none!important;border-radius:8px!important;padding:8px 20px!important;transition:opacity .2s!important;}
 .stButton>button:hover{opacity:.85!important;}
+/* Red cancel button */
+.cancel-btn>button{background:#7f1d1d!important;color:#fca5a5!important;}
 hr{border-color:var(--border);margin:24px 0;}
+/* Setup screen */
+.setup-wrap{max-width:480px;margin:80px auto 0;text-align:center;}
+.setup-logo{font-family:'Space Mono',monospace;font-size:48px;font-weight:700;color:#7c6af7;letter-spacing:-2px;}
+.setup-sub{font-size:14px;color:#6b6b8a;margin:8px 0 40px;}
+.setup-card{background:#111118;border:1px solid #2a2a3a;border-radius:16px;padding:32px;}
+/* Confirm modal overlay */
+.confirm-wrap{background:#111118;border:1px solid #5a3e00;border-radius:12px;padding:24px;margin:24px 0;}
+.confirm-title{font-family:'Space Mono',monospace;font-size:13px;color:#fbbf24;margin-bottom:12px;}
+.confirm-body{font-size:13px;color:#e2e2f0;margin-bottom:16px;line-height:1.6;}
+.confirm-path{font-family:'Space Mono',monospace;font-size:12px;color:#c084fc;background:#1a0a30;border:1px solid #3d2060;border-radius:6px;padding:6px 12px;display:inline-block;margin-top:4px;}
 @keyframes wave{0%,100%{height:4px;}50%{height:20px;}}
 .waveform{display:flex;align-items:center;gap:3px;height:28px;}
 .wave-bar{width:3px;background:var(--accent);border-radius:2px;animation:wave 1.2s ease-in-out infinite;}
@@ -62,16 +74,59 @@ hr{border-color:var(--border);margin:24px 0;}
 </style>
 """, unsafe_allow_html=True)
 
-# Session state
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
-if "pending_confirmation" not in st.session_state:
-    st.session_state.pending_confirmation = None
+# ── Session state ──────────────────────────────────────────────────────────────
+for key, default in [
+    ("groq_api_key", os.getenv("GROQ_API_KEY", "")),
+    ("history", []),
+    ("last_result", None),
+    ("pending_confirmation", None),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCREEN 1 — API KEY SETUP (shown once, until key is entered)
+# ══════════════════════════════════════════════════════════════════════════════
+if not st.session_state.groq_api_key:
+    st.markdown("""
+    <div class='setup-wrap'>
+        <div class='setup-logo'>ARIA</div>
+        <div class='setup-sub'>Autonomous Reasoning & Interaction Agent</div>
+        <div class='setup-card'>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='font-size:15px;font-weight:600;margin-bottom:6px;'>Enter your Groq API Key</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:13px;color:#6b6b8a;margin-bottom:20px;'>Your key is stored only in this browser session and never sent anywhere except Groq's API.</div>", unsafe_allow_html=True)
+
+    key_input = st.text_input(
+        "Groq API Key",
+        type="password",
+        placeholder="gsk_...",
+        label_visibility="collapsed"
+    )
+    st.markdown("<div style='font-size:12px;color:#6b6b8a;margin-top:8px;'>Don't have one? Get a free key at <a href='https://console.groq.com' target='_blank' style='color:#c084fc;'>console.groq.com</a></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    if st.button("Continue →", use_container_width=True):
+        if key_input.strip().startswith("gsk_"):
+            st.session_state.groq_api_key = key_input.strip()
+            os.environ["GROQ_API_KEY"] = key_input.strip()
+            st.rerun()
+        else:
+            st.markdown("<div style='font-size:12px;color:#f87171;margin-top:8px;'>Key should start with <code>gsk_</code> — check and try again.</div>", unsafe_allow_html=True)
+
+    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.stop()
+
+# Key is confirmed — make sure env is set (survives hot-reloads)
+os.environ["GROQ_API_KEY"] = st.session_state.groq_api_key
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCREEN 2 — MAIN APP
+# ══════════════════════════════════════════════════════════════════════════════
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -83,41 +138,35 @@ with st.sidebar:
     <div style='margin-bottom:16px;'><div class='groq-badge'>⚡ Powered by Groq API</div></div>
     """, unsafe_allow_html=True)
 
-    st.markdown("**Groq API Key**")
-    groq_key = st.text_input(
-        "Enter your key",
-        type="password",
-        value=os.getenv("GROQ_API_KEY", ""),
-        placeholder="gsk_...",
-        help="Get a free key at console.groq.com",
-        label_visibility="collapsed"
-    )
-    if groq_key:
-        os.environ["GROQ_API_KEY"] = groq_key
-        st.markdown("<div style='font-size:11px;color:#34d399;margin-bottom:4px;'>✓ Key saved for this session</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='font-size:11px;color:#f87171;margin-bottom:4px;'>⚠ API key required to run</div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:11px;color:#6b6b8a;'>Get a free key → <a href='https://console.groq.com' target='_blank' style='color:#c084fc;'>console.groq.com</a></div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:11px;color:#34d399;margin-bottom:16px;'>✓ API key active</div>", unsafe_allow_html=True)
+
+    if st.button("Sign out / change key", use_container_width=True):
+        st.session_state.groq_api_key = ""
+        os.environ.pop("GROQ_API_KEY", None)
+        st.session_state.last_result = None
+        st.session_state.pending_confirmation = None
+        st.rerun()
 
     st.markdown("---")
     st.markdown("**LLM Model**")
     llm_model = st.selectbox(
-        "Chat model",
+        "model",
         ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
         index=0,
         help="llama-3.1-8b-instant = fastest; 70b = most capable",
         label_visibility="collapsed"
     )
-    st.markdown(f"<div style='font-size:11px;color:#6b6b8a;'>STT: whisper-large-v3 (fixed)</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:11px;color:#6b6b8a;'>STT: whisper-large-v3 (fixed)</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("**Options**")
     human_in_loop = st.toggle("Confirm before file ops", value=True)
-    show_raw = st.toggle("Show raw intent JSON", value=False)
+    show_raw      = st.toggle("Show raw intent JSON",    value=False)
 
     st.markdown("---")
     st.markdown("**Supported Intents**")
-    for item in ["📄 Create file", "💻 Write code", "📝 Summarize text", "💬 General chat", "📁 Create folder", "🔗 Compound commands"]:
+    for item in ["📄 Create file", "💻 Write code", "📝 Summarize text",
+                 "💬 General chat", "📁 Create folder", "🔗 Compound commands"]:
         st.markdown(f"<div style='font-size:12px;color:#9090b0;padding:2px 0;'>{item}</div>", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -140,88 +189,114 @@ with col_title:
     <p style='color:#6b6b8a;font-size:14px;margin-top:0;'>Speak a command → transcribe → understand intent → execute locally</p>
     """, unsafe_allow_html=True)
 with col_status:
-    key_ok = bool(os.getenv("GROQ_API_KEY"))
     st.markdown(f"""
     <div style='text-align:right;padding-top:14px;'>
-        <span class='tag {"tag-success" if key_ok else "tag-warn"}'>{'● READY' if key_ok else '● NO KEY'}</span>
+        <span class='tag tag-success'>● READY</span>
         <div style='font-family:Space Mono,monospace;font-size:10px;color:#6b6b8a;margin-top:4px;'>groq / {llm_model}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("---")
 
-if not os.getenv("GROQ_API_KEY"):
-    st.markdown("""
-    <div class='card card-warn'>
-        <div style='font-family:Space Mono,monospace;font-size:13px;color:#fbbf24;margin-bottom:8px;'>⚠ Groq API Key Required</div>
-        <div style='font-size:13px;color:#e2e2f0;'>
-            Enter your Groq API key in the sidebar to get started.<br>
-            Get a free key at <a href='https://console.groq.com' target='_blank' style='color:#c084fc;'>console.groq.com</a> — takes under a minute.
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIRM DIALOG — shown instead of input tabs when pending
+# ══════════════════════════════════════════════════════════════════════════════
+if st.session_state.pending_confirmation:
+    pending = st.session_state.pending_confirmation
+    intent  = pending["intent_data"]
+    fname   = intent.get("entities", {}).get("filename", "file.txt")
+    action  = intent.get("primary_intent", "write_code").replace("_", " ").title()
+    desc    = intent.get("entities", {}).get("description", "")
+    transcription = pending.get("transcription", "")
+
+    st.markdown(f"""
+    <div class='confirm-wrap'>
+        <div class='confirm-title'>⚠ Confirm File Operation</div>
+        <div class='confirm-body'>
+            You said: <span style='color:#c084fc;font-style:italic;'>"{transcription}"</span><br><br>
+            ARIA wants to <b>{action}</b>{(' — ' + desc) if desc else ''}.<br>
+            This will create or overwrite:
         </div>
-    </div>""", unsafe_allow_html=True)
-    st.stop()
+        <div class='confirm-path'>output/{fname}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2, _ = st.columns([1, 1, 3])
+    with c1:
+        if st.button("✓  Run it", use_container_width=True):
+            with st.spinner("Executing…"):
+                result = execute_tool(pending["intent_data"], confirmed=True)
+            result.update({
+                "transcription": pending.get("transcription", ""),
+                "intent_data":   pending["intent_data"],
+                "stt_time":      pending.get("stt_time", 0),
+                "intent_time":   pending.get("intent_time", 0),
+                "exec_time":     0,
+            })
+            st.session_state.history.append({
+                "timestamp":      datetime.now().strftime("%H:%M:%S"),
+                "transcription":  pending.get("transcription", ""),
+                "primary_intent": intent.get("primary_intent", "unknown"),
+                "status":         result.get("status", "unknown"),
+            })
+            st.session_state.last_result = result
+            st.session_state.pending_confirmation = None
+            st.rerun()
+    with c2:
+        if st.button("✗  Cancel", use_container_width=True):
+            st.session_state.pending_confirmation = None
+            st.session_state.last_result = {
+                "status": "cancelled",
+                "message": "Action cancelled.",
+                "transcription": pending.get("transcription", ""),
+                "intent_data": pending["intent_data"],
+                "output": "",
+                "action_taken": "Cancelled by user",
+                "files_created": [],
+            }
+            st.rerun()
+
+    st.stop()   # Don't render input tabs while confirm is shown
 
 # ── Input tabs ─────────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["🎤  Microphone", "📁  Upload Audio", "⌨️  Text (Debug)"])
 audio_bytes = None
-input_mode = None
-debug_text = ""
+input_mode  = None
+debug_text  = ""
 
 with tab1:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     mic_audio = st.audio_input("Click to record your command")
     if mic_audio:
         audio_bytes = mic_audio.read()
-        input_mode = "mic"
+        input_mode  = "mic"
 
 with tab2:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     uploaded = st.file_uploader("Upload a WAV or MP3 file", type=["wav", "mp3", "m4a", "ogg", "flac"])
     if uploaded:
         audio_bytes = uploaded.read()
-        input_mode = "upload"
+        input_mode  = "upload"
         st.audio(uploaded)
 
 with tab3:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:12px;color:#fbbf24;margin-bottom:8px;'>⚡ Debug mode: bypass STT, type command directly</div>", unsafe_allow_html=True)
-    debug_text = st.text_area("Type your command", placeholder="e.g. Create a Python file with a bubble sort function", height=80)
-    run_text = st.button("Run Command")
-    if run_text and debug_text.strip():
-        input_mode = "text"
+    st.markdown("<div style='font-size:12px;color:#fbbf24;margin-bottom:8px;'>⚡ Debug mode — bypass STT and type a command directly</div>", unsafe_allow_html=True)
+    debug_text = st.text_area("Command", placeholder="e.g. Create a Python file with a bubble sort function", height=80, label_visibility="collapsed")
+    if st.button("Run Command"):
+        if debug_text.strip():
+            input_mode = "text"
 
 st.markdown("---")
 
-# ── Pending confirmation ───────────────────────────────────────────────────────
-if st.session_state.pending_confirmation:
-    pending = st.session_state.pending_confirmation
-    st.markdown(f"""
-    <div class='card card-warn'>
-        <div style='font-family:Space Mono,monospace;font-size:13px;color:#fbbf24;margin-bottom:8px;'>⚠ CONFIRM ACTION</div>
-        <div style='font-size:13px;color:#e2e2f0;margin-bottom:12px;'>{pending['description']}</div>
-        <div style='font-size:12px;color:#6b6b8a;'>Writes to: <code style='color:#c084fc'>output/{pending.get('filename','...')}</code></div>
-    </div>""", unsafe_allow_html=True)
-    c1, c2, _ = st.columns([1, 1, 4])
-    with c1:
-        if st.button("✓ Confirm"):
-            result = execute_tool(pending["intent_data"], confirmed=True)
-            st.session_state.last_result = result
-            st.session_state.pending_confirmation = None
-            st.rerun()
-    with c2:
-        if st.button("✗ Cancel"):
-            st.session_state.pending_confirmation = None
-            st.session_state.last_result = {"status": "cancelled", "message": "Action cancelled by user."}
-            st.rerun()
-
-# ── Processing ─────────────────────────────────────────────────────────────────
+# ── Processing pipeline ────────────────────────────────────────────────────────
 should_process = (audio_bytes is not None and input_mode in ("mic", "upload")) or \
                  (input_mode == "text" and debug_text.strip())
 
-if should_process and not st.session_state.pending_confirmation:
+if should_process:
     with st.spinner(""):
         ph = st.empty()
 
-        # Step 1 — STT
+        # 1 — STT
         if input_mode == "text":
             transcription = debug_text.strip()
             stt_time = 0
@@ -245,10 +320,10 @@ if should_process and not st.session_state.pending_confirmation:
             stt_time = round(time.time() - t0, 2)
 
         if not transcription or transcription.startswith("[STT ERROR"):
-            ph.markdown(f"<div class='card card-err'><b>Transcription Failed</b><br><span style='font-family:Space Mono,monospace;font-size:12px;'>{transcription}</span></div>", unsafe_allow_html=True)
+            ph.markdown(f"<div class='card card-err'><b>Transcription Failed</b><br><span style='font-size:12px;'>{transcription}</span></div>", unsafe_allow_html=True)
             st.stop()
 
-        # Step 2 — Intent
+        # 2 — Intent
         ph.markdown("<div class='card'><span style='font-family:Space Mono,monospace;font-size:12px;color:#7c6af7;'>🧠 Classifying intent via Groq…</span></div>", unsafe_allow_html=True)
         t1 = time.time()
         try:
@@ -257,27 +332,22 @@ if should_process and not st.session_state.pending_confirmation:
             intent_data = {"primary_intent": "general_chat", "entities": {}, "error": str(e), "original_text": transcription}
         intent_time = round(time.time() - t1, 2)
 
-        # Step 3 — Execute
-        ph.markdown("<div class='card'><span style='font-family:Space Mono,monospace;font-size:12px;color:#7c6af7;'>⚙️ Executing action…</span></div>", unsafe_allow_html=True)
-
+        # 3 — Confirm gate or execute
+        ph.empty()
         needs_confirm = human_in_loop and intent_data.get("primary_intent") in ("create_file", "write_code")
+
         if needs_confirm:
-            fname = intent_data.get("entities", {}).get("filename", "file.txt")
+            # Store everything needed and rerun — confirm dialog renders at top of screen
             st.session_state.pending_confirmation = {
-                "description": f"About to execute: **{intent_data.get('primary_intent')}** — {intent_data.get('entities', {}).get('description', '')}",
-                "filename": fname,
-                "intent_data": intent_data,
-            }
-            ph.empty()
-            st.session_state.last_result = {
-                "status": "awaiting_confirmation",
+                "intent_data":   intent_data,
                 "transcription": transcription,
-                "intent_data": intent_data,
-                "stt_time": stt_time,
-                "intent_time": intent_time,
+                "stt_time":      stt_time,
+                "intent_time":   intent_time,
             }
+            st.session_state.last_result = None  # clear stale results
             st.rerun()
 
+        ph.markdown("<div class='card'><span style='font-family:Space Mono,monospace;font-size:12px;color:#7c6af7;'>⚙️ Executing…</span></div>", unsafe_allow_html=True)
         t2 = time.time()
         try:
             result = execute_tool(intent_data)
@@ -286,79 +356,85 @@ if should_process and not st.session_state.pending_confirmation:
         exec_time = round(time.time() - t2, 2)
 
         ph.empty()
-        result.update({"transcription": transcription, "intent_data": intent_data,
-                        "stt_time": stt_time, "intent_time": intent_time, "exec_time": exec_time})
-
-        st.session_state.history.append({
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
+        result.update({
             "transcription": transcription,
+            "intent_data":   intent_data,
+            "stt_time":      stt_time,
+            "intent_time":   intent_time,
+            "exec_time":     exec_time,
+        })
+        st.session_state.history.append({
+            "timestamp":      datetime.now().strftime("%H:%M:%S"),
+            "transcription":  transcription,
             "primary_intent": intent_data.get("primary_intent", "unknown"),
-            "status": result.get("status", "unknown"),
+            "status":         result.get("status", "unknown"),
         })
         st.session_state.last_result = result
 
 # ── Results ────────────────────────────────────────────────────────────────────
 if st.session_state.last_result:
     r = st.session_state.last_result
-    if r.get("status") == "awaiting_confirmation":
-        pass
-    else:
-        st.markdown("## Pipeline Results")
-        col_a, col_b = st.columns(2)
+    st.markdown("## Pipeline Results")
+    col_a, col_b = st.columns(2)
 
-        with col_a:
-            id_ = r.get("intent_data", {})
-            primary  = id_.get("primary_intent", "unknown")
-            compound = id_.get("compound_intents", [])
-            st.markdown(f"""
-            <div class='card card-accent'>
-                <div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;'>Pipeline Trace</div>
-                <div class='step'><div class='step-num'>01</div><div class='step-content'>
-                    <div class='step-label'>Transcription{" (" + str(r.get("stt_time","")) + "s)" if r.get("stt_time") else ""}</div>
-                    <div class='step-value'>"{r.get("transcription","")}"</div>
-                </div></div>
-                <div class='step'><div class='step-num'>02</div><div class='step-content'>
-                    <div class='step-label'>Detected Intent{" (" + str(r.get("intent_time","")) + "s)" if r.get("intent_time") else ""}</div>
-                    <div class='step-value'>
-                        <span class='tag tag-intent'>{primary}</span>
-                        {"".join([f"<span class='tag tag-warn' style='margin-left:4px'>{c}</span>" for c in compound])}
-                    </div>
-                </div></div>
-                <div class='step'><div class='step-num'>03</div><div class='step-content'>
-                    <div class='step-label'>Action Executed{" (" + str(r.get("exec_time","")) + "s)" if r.get("exec_time") else ""}</div>
-                    <div class='step-value'>{r.get("action_taken", primary)}</div>
-                </div></div>
-                <div class='step'><div class='step-num'>04</div><div class='step-content'>
-                    <div class='step-label'>Status</div>
-                    <div class='step-value'>
-                        <span class='tag {"tag-success" if r.get("status") == "success" else "tag-warn"}'>{r.get("status","unknown").upper()}</span>
-                        <span style='font-size:12px;color:#9090b0;margin-left:8px;'>{r.get("message","")}</span>
-                    </div>
-                </div></div>
-            </div>""", unsafe_allow_html=True)
+    with col_a:
+        id_      = r.get("intent_data", {})
+        primary  = id_.get("primary_intent", "unknown")
+        compound = id_.get("compound_intents", [])
+        st.markdown(f"""
+        <div class='card card-accent'>
+            <div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;'>Pipeline Trace</div>
+            <div class='step'><div class='step-num'>01</div><div class='step-content'>
+                <div class='step-label'>Transcription{" (" + str(r.get("stt_time","")) + "s)" if r.get("stt_time") else ""}</div>
+                <div class='step-value'>"{r.get("transcription","")}"</div>
+            </div></div>
+            <div class='step'><div class='step-num'>02</div><div class='step-content'>
+                <div class='step-label'>Detected Intent{" (" + str(r.get("intent_time","")) + "s)" if r.get("intent_time") else ""}</div>
+                <div class='step-value'>
+                    <span class='tag tag-intent'>{primary}</span>
+                    {"".join([f"<span class='tag tag-warn' style='margin-left:4px'>{c}</span>" for c in compound])}
+                </div>
+            </div></div>
+            <div class='step'><div class='step-num'>03</div><div class='step-content'>
+                <div class='step-label'>Action Executed{" (" + str(r.get("exec_time","")) + "s)" if r.get("exec_time") else ""}</div>
+                <div class='step-value'>{r.get("action_taken", primary)}</div>
+            </div></div>
+            <div class='step'><div class='step-num'>04</div><div class='step-content'>
+                <div class='step-label'>Status</div>
+                <div class='step-value'>
+                    <span class='tag {"tag-success" if r.get("status") == "success" else "tag-warn"}'>{r.get("status","unknown").upper()}</span>
+                    <span style='font-size:12px;color:#9090b0;margin-left:8px;'>{r.get("message","")}</span>
+                </div>
+            </div></div>
+        </div>""", unsafe_allow_html=True)
 
-            if show_raw and id_:
-                st.markdown(f"<div class='code-out'>{json.dumps(id_, indent=2)}</div>", unsafe_allow_html=True)
+        if show_raw and id_:
+            st.markdown(f"<div class='code-out'>{json.dumps(id_, indent=2)}</div>", unsafe_allow_html=True)
 
-        with col_b:
-            output = r.get("output", "")
-            files  = r.get("files_created", [])
-            sc = "card-success" if r.get("status") == "success" else "card-err"
-            st.markdown(f"<div class='card {sc}'><div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;'>Output</div>", unsafe_allow_html=True)
-            for f in files:
-                st.markdown(f"<div style='font-family:Space Mono,monospace;font-size:11px;color:#34d399;'>📄 output/{f}</div>", unsafe_allow_html=True)
-            if files:
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            if output:
-                st.markdown(f"<div class='code-out'>{output[:3000]}{'…' if len(output)>3000 else ''}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div style='font-size:13px;color:#9090b0;'>{r.get('message','No output.')}</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-
+    with col_b:
+        output = r.get("output", "")
+        files  = r.get("files_created", [])
+        sc = "card-success" if r.get("status") == "success" else "card-err"
+        st.markdown(f"<div class='card {sc}'><div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;'>Output</div>", unsafe_allow_html=True)
+        for f in files:
+            st.markdown(f"<div style='font-family:Space Mono,monospace;font-size:11px;color:#34d399;margin-bottom:4px;'>📄 output/{f}</div>", unsafe_allow_html=True)
         if files:
-            st.markdown("**Download created files:**")
-            for fname in files:
-                fpath = OUTPUT_DIR / fname
-                if fpath.exists():
-                    st.download_button(f"⬇ {fname}", data=fpath.read_text(errors="replace"),
-                                       file_name=fname, mime="text/plain", key=f"dl_{fname}_{time.time()}")
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if output:
+            st.markdown(f"<div class='code-out'>{output[:3000]}{'…' if len(output)>3000 else ''}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='font-size:13px;color:#9090b0;'>{r.get('message','No output.')}</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    if files:
+        st.markdown("**Download created files:**")
+        for fname in files:
+            fpath = OUTPUT_DIR / fname
+            if fpath.exists():
+                st.download_button(
+                    f"⬇  {fname}",
+                    data=fpath.read_text(errors="replace"),
+                    file_name=fname,
+                    mime="text/plain",
+                    key=f"dl_{fname}_{time.time()}"
+                )
