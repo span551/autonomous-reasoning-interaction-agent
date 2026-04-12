@@ -49,9 +49,9 @@ Audio Input (mic / file upload / text debug)
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/span551/aria-voice-agent
-cd aria-voice-agent
-pip install -r requirements.txt
+git clone https://github.com/span551/autonomous-reasoning-interaction-agent.git
+cd autonomous-reasoning-interaction-agent
+python -m pip install -r requirements.txt
 ```
 
 ### 2. Get your Groq API key (free)
