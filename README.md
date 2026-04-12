@@ -1,7 +1,7 @@
 # 🎙️ ARIA — Autonomous Reasoning & Interaction Agent
 
 A voice-controlled local AI agent powered entirely by **Groq API** — fast, free-tier Whisper for transcription and blazing LLM inference for intent + execution.
-
+ project Link :https://autonomous-reasoning-interaction-agent.streamlit.app/
 ---
 
 ## 🏗️ Architecture
