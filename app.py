@@ -326,49 +326,93 @@ if st.session_state.last_result:
         id_      = r.get("intent_data", {})
         primary  = id_.get("primary_intent", "unknown")
         compound = id_.get("compound_intents", [])
-        st.markdown(f"""
-        <div class='card card-accent'>
-            <div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;'>Pipeline Trace</div>
-            <div class='step'><div class='step-num'>01</div><div class='step-content'>
-                <div class='step-label'>Transcription{" (" + str(r.get("stt_time","")) + "s)" if r.get("stt_time") else ""}</div>
-                <div class='step-value'>"{r.get("transcription","")}"</div>
-            </div></div>
-            <div class='step'><div class='step-num'>02</div><div class='step-content'>
-                <div class='step-label'>Detected Intent{" (" + str(r.get("intent_time","")) + "s)" if r.get("intent_time") else ""}</div>
-                <div class='step-value'>
-                    <span class='tag tag-intent'>{primary}</span>
-                    {"".join([f"<span class='tag tag-warn' style='margin-left:4px'>{c}</span>" for c in compound])}
+
+        # Pre-build every dynamic fragment so no logic lives inside the HTML string
+        stt_label    = "TRANSCRIPTION (" + str(r["stt_time"]) + "s)" if r.get("stt_time") else "TRANSCRIPTION"
+        intent_label = "DETECTED INTENT (" + str(r["intent_time"]) + "s)" if r.get("intent_time") else "DETECTED INTENT"
+        exec_label   = "ACTION EXECUTED (" + str(r["exec_time"]) + "s)" if r.get("exec_time") else "ACTION EXECUTED"
+        transcription_text = r.get("transcription", "")
+        action_text  = r.get("action_taken", primary)
+        message_text = r.get("message", "")
+        status_val   = r.get("status", "unknown").upper()
+        status_class = "tag-success" if r.get("status") == "success" else "tag-warn"
+        compound_tags = "".join(
+            "<span style='display:inline-block;padding:3px 12px;border-radius:20px;"
+            "font-family:Space Mono,monospace;font-size:11px;font-weight:700;"
+            "background:#2e2100;color:#fbbf24;border:1px solid #5a3e00;margin-left:4px;'>"
+            + c + "</span>" for c in compound
+        )
+
+        st.markdown("""
+        <div class="card card-accent">
+            <div style="font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Pipeline Trace</div>
+            <div class="step">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <div class="step-label">""" + stt_label + """</div>
+                    <div class="step-value">&ldquo;""" + transcription_text + """&rdquo;</div>
                 </div>
-            </div></div>
-            <div class='step'><div class='step-num'>03</div><div class='step-content'>
-                <div class='step-label'>Action Executed{" (" + str(r.get("exec_time","")) + "s)" if r.get("exec_time") else ""}</div>
-                <div class='step-value'>{r.get("action_taken", primary)}</div>
-            </div></div>
-            <div class='step'><div class='step-num'>04</div><div class='step-content'>
-                <div class='step-label'>Status</div>
-                <div class='step-value'>
-                    <span class='tag {"tag-success" if r.get("status") == "success" else "tag-warn"}'>{r.get("status","unknown").upper()}</span>
-                    <span style='font-size:12px;color:#9090b0;margin-left:8px;'>{r.get("message","")}</span>
+            </div>
+            <div class="step">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <div class="step-label">""" + intent_label + """</div>
+                    <div class="step-value">
+                        <span class="tag tag-intent">""" + primary + """</span>
+                        """ + compound_tags + """
+                    </div>
                 </div>
-            </div></div>
+            </div>
+            <div class="step">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <div class="step-label">""" + exec_label + """</div>
+                    <div class="step-value">""" + action_text + """</div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">04</div>
+                <div class="step-content">
+                    <div class="step-label">STATUS</div>
+                    <div class="step-value">
+                        <span class="tag """ + status_class + """">""" + status_val + """</span>
+                        <span style="font-size:12px;color:#9090b0;margin-left:8px;">""" + message_text + """</span>
+                    </div>
+                </div>
+            </div>
         </div>""", unsafe_allow_html=True)
 
         if show_raw and id_:
-            st.markdown(f"<div class='code-out'>{json.dumps(id_, indent=2)}</div>", unsafe_allow_html=True)
+            raw_json = json.dumps(id_, indent=2)
+            st.markdown("<div class='code-out'>" + raw_json + "</div>", unsafe_allow_html=True)
 
     with col_b:
         output = r.get("output", "")
         files  = r.get("files_created", [])
-        sc = "card-success" if r.get("status") == "success" else "card-err"
-        st.markdown(f"<div class='card {sc}'><div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;'>Output</div>", unsafe_allow_html=True)
+        card_class = "card-success" if r.get("status") == "success" else "card-err"
+        st.markdown(
+            "<div class='card " + card_class + "'>"
+            "<div style='font-size:11px;color:#6b6b8a;text-transform:uppercase;"
+            "letter-spacing:.08em;margin-bottom:10px;'>Output</div>",
+            unsafe_allow_html=True
+        )
         for f in files:
-            st.markdown(f"<div style='font-family:Space Mono,monospace;font-size:11px;color:#34d399;margin-bottom:4px;'>📄 output/{f}</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='font-family:Space Mono,monospace;font-size:11px;"
+                "color:#34d399;margin-bottom:4px;'>📄 output/" + f + "</div>",
+                unsafe_allow_html=True
+            )
         if files:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         if output:
-            st.markdown(f"<div class='code-out'>{output[:3000]}{'…' if len(output)>3000 else ''}</div>", unsafe_allow_html=True)
+            clipped = output[:3000] + ("…" if len(output) > 3000 else "")
+            st.markdown("<div class='code-out'>" + clipped + "</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='font-size:13px;color:#9090b0;'>{r.get('message','No output.')}</div>", unsafe_allow_html=True)
+            fallback = r.get("message", "No output.")
+            st.markdown(
+                "<div style='font-size:13px;color:#9090b0;'>" + fallback + "</div>",
+                unsafe_allow_html=True
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
     if files:
