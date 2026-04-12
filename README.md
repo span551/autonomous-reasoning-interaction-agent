@@ -47,7 +47,7 @@ Audio Input (mic / file upload / text debug)
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/aria-voice-agent
+git clone https://github.com/span551/aria-voice-agent
 cd aria-voice-agent
 pip install -r requirements.txt
 ```
