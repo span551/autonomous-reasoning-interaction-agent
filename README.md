@@ -1,12 +1,14 @@
-# 🎙️ ARIA — Autonomous Reasoning & Interaction Agent
+#  ARIA — Autonomous Reasoning & Interaction Agent
 
 A voice-controlled local AI agent powered entirely by **Groq API** — fast, free-tier Whisper for transcription and blazing LLM inference for intent + execution.
 
 
  project Link :https://autonomous-reasoning-interaction-agent.streamlit.app/
+ youtube video link : https://youtu.be/hkXxr2asigM
+ 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 Audio Input (mic / file upload / text debug)
@@ -44,7 +46,7 @@ Audio Input (mic / file upload / text debug)
 
 ---
 
-## ⚙️ Setup
+##  Setup
 
 ### 1. Clone & install
 
@@ -93,7 +95,7 @@ Open `http://localhost:8501` in your browser.
 
 ---
 
-## ✨ Features
+##  Features
 
 - **Mic + file upload** — record live or upload .wav/.mp3/.m4a
 - **Text debug mode** — bypass STT to test intent classification directly
@@ -107,22 +109,22 @@ Open `http://localhost:8501` in your browser.
 
 ---
 
-## 🔧 Why Groq for everything?
+##  Why Groq for everything?
 
 Groq's LPU hardware delivers **extremely low latency** — Whisper transcription typically completes in 1–2 seconds, and LLM responses in under a second for 8B models. The free tier is generous enough for development and demos. This means no GPU required on your local machine.
 
 ---
 
-## 📁 Output safety
+##  Output safety
 
 All file writes are **restricted to `output/`**. Path traversal attempts are sanitized in `tools.py` before any file operation.
 
 ---
 
-## 🚀 Bonus features implemented
+##  Bonus features implemented
 
-- ✅ Compound commands
-- ✅ Human-in-the-loop confirmation
-- ✅ Graceful degradation on unknown intents
-- ✅ Session memory / history sidebar
-- ✅ Per-stage latency benchmarking in UI
+-  Compound commands
+-  Human-in-the-loop confirmation
+-  Graceful degradation on unknown intents
+-  Session memory / history sidebar
+-  Per-stage latency benchmarking in UI
