@@ -72,6 +72,7 @@ hr{border-color:var(--border);margin:24px 0;}
 # ── Session state ──────────────────────────────────────────────────────────────
 for key, default in [
     ("history", []),
+    ("chat_context", []),   # list of {role, content} — passed to LLM each turn
     ("last_result", None),
     ("pending_confirmation", None),
 ]:
@@ -106,6 +107,19 @@ with st.sidebar:
     st.markdown("**Options**")
     human_in_loop = st.toggle("Confirm before file ops", value=True)
     show_raw      = st.toggle("Show raw intent JSON",    value=False)
+
+    st.markdown("---")
+    st.markdown("**Chat Memory**")
+    ctx_len = len(st.session_state.chat_context)
+    turns = ctx_len // 2
+    if turns == 0:
+        st.markdown("<div style='font-size:12px;color:#6b6b8a;'>No context yet — memory builds as you use ARIA.</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div style='font-size:12px;color:#34d399;'>🧠 {turns} turn{'s' if turns != 1 else ''} in context</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px;color:#6b6b8a;margin-top:2px;'>ARIA remembers your previous commands this session.</div>", unsafe_allow_html=True)
+    if st.button("🗑 Clear memory", use_container_width=True):
+        st.session_state.chat_context = []
+        st.rerun()
 
     st.markdown("---")
     st.markdown("**Supported Intents**")
@@ -169,7 +183,11 @@ if st.session_state.pending_confirmation:
     with c1:
         if st.button("✓  Run it", use_container_width=True):
             with st.spinner("Executing…"):
-                result = execute_tool(pending["intent_data"], confirmed=True)
+                result = execute_tool(
+                    pending["intent_data"],
+                    confirmed=True,
+                    chat_context=st.session_state.chat_context
+                )
             result.update({
                 "transcription": pending.get("transcription", ""),
                 "intent_data":   pending["intent_data"],
@@ -177,6 +195,14 @@ if st.session_state.pending_confirmation:
                 "intent_time":   pending.get("intent_time", 0),
                 "exec_time":     0,
             })
+            # Update chat context
+            user_text = pending.get("transcription", "")
+            st.session_state.chat_context.append({"role": "user", "content": user_text})
+            assistant_summary = result.get("output", "") or result.get("message", "")
+            st.session_state.chat_context.append({"role": "assistant", "content": assistant_summary[:1000]})
+            if len(st.session_state.chat_context) > 20:
+                st.session_state.chat_context = st.session_state.chat_context[-20:]
+
             st.session_state.history.append({
                 "timestamp":      datetime.now().strftime("%H:%M:%S"),
                 "transcription":  pending.get("transcription", ""),
@@ -272,7 +298,11 @@ if should_process:
         ph.markdown("<div class='card'><span style='font-family:Space Mono,monospace;font-size:12px;color:#7c6af7;'>🧠 Classifying intent via Groq…</span></div>", unsafe_allow_html=True)
         t1 = time.time()
         try:
-            intent_data = classify_intent(transcription, model=llm_model)
+            intent_data = classify_intent(
+                transcription,
+                model=llm_model,
+                chat_context=st.session_state.chat_context
+            )
         except Exception as e:
             intent_data = {"primary_intent": "general_chat", "entities": {}, "error": str(e), "original_text": transcription}
         intent_time = round(time.time() - t1, 2)
@@ -295,7 +325,7 @@ if should_process:
         ph.markdown("<div class='card'><span style='font-family:Space Mono,monospace;font-size:12px;color:#7c6af7;'>⚙️ Executing…</span></div>", unsafe_allow_html=True)
         t2 = time.time()
         try:
-            result = execute_tool(intent_data)
+            result = execute_tool(intent_data, chat_context=st.session_state.chat_context)
         except Exception as e:
             result = {"status": "error", "message": str(e), "output": "", "action_taken": "Error", "files_created": []}
         exec_time = round(time.time() - t2, 2)
@@ -308,6 +338,13 @@ if should_process:
             "intent_time":   intent_time,
             "exec_time":     exec_time,
         })
+
+        # ── Update chat context (keep last 10 turns = 20 messages)
+        st.session_state.chat_context.append({"role": "user", "content": transcription})
+        assistant_summary = result.get("output", "") or result.get("message", "")
+        st.session_state.chat_context.append({"role": "assistant", "content": assistant_summary[:1000]})
+        if len(st.session_state.chat_context) > 20:
+            st.session_state.chat_context = st.session_state.chat_context[-20:]
         st.session_state.history.append({
             "timestamp":      datetime.now().strftime("%H:%M:%S"),
             "transcription":  transcription,
