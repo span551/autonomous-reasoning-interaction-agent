@@ -1,7 +1,7 @@
 """
 Tool Execution module.
 Handles: create_file, write_code, summarize, general_chat, create_folder.
-Supports compound commands (multiple intents chained).
+Supports compound commands and chat context memory.
 
 Safety: ALL file operations are restricted to the output/ directory.
 """
@@ -14,16 +14,14 @@ OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-# ── Safety helpers ─────────────────────────────────────────────────────────────
+# ── Safety ─────────────────────────────────────────────────────────────────────
 
 def safe_filename(name: str) -> str:
-    """Sanitize filename and strip any path traversal."""
     if not name:
         name = f"file_{datetime.now().strftime('%H%M%S')}.txt"
-    name = Path(name).name                  # strip directories
-    name = re.sub(r'[^\w\-.]', '_', name)  # allow only safe chars
+    name = Path(name).name
+    name = re.sub(r'[^\w\-.]', '_', name)
     return name
-
 
 def safe_path(filename: str) -> Path:
     return OUTPUT_DIR / safe_filename(filename)
@@ -31,25 +29,27 @@ def safe_path(filename: str) -> Path:
 
 # ── Main dispatcher ────────────────────────────────────────────────────────────
 
-def execute_tool(intent_data: dict, confirmed: bool = False) -> dict:
+def execute_tool(intent_data: dict, confirmed: bool = False, chat_context: list = None) -> dict:
     """
     Execute the appropriate tool based on intent_data.
 
     Args:
-        intent_data: Dict returned by classify_intent()
-        confirmed:   True after human-in-loop confirmation
+        intent_data:  Dict returned by classify_intent()
+        confirmed:    True after human-in-loop confirmation
+        chat_context: Prior conversation turns for context-aware generation
 
     Returns:
         Dict with: status, message, output, action_taken, files_created
     """
+    ctx = chat_context or []
     primary  = intent_data.get("primary_intent", "general_chat")
     compound = intent_data.get("compound_intents", [])
 
-    result = _dispatch(primary, intent_data)
+    result = _dispatch(primary, intent_data, ctx=ctx)
 
     for extra in compound:
         if extra != primary:
-            extra_result = _dispatch(extra, intent_data, context=result)
+            extra_result = _dispatch(extra, intent_data, context=result, ctx=ctx)
             result["output"]        = (result.get("output", "") + "\n\n--- " +
                                        extra.upper() + " ---\n" + extra_result.get("output", ""))
             result["files_created"] = result.get("files_created", []) + extra_result.get("files_created", [])
@@ -58,7 +58,7 @@ def execute_tool(intent_data: dict, confirmed: bool = False) -> dict:
     return result
 
 
-def _dispatch(intent: str, intent_data: dict, context: dict = None) -> dict:
+def _dispatch(intent: str, intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     handlers = {
         "create_file":   _handle_create_file,
         "write_code":    _handle_write_code,
@@ -66,12 +66,12 @@ def _dispatch(intent: str, intent_data: dict, context: dict = None) -> dict:
         "general_chat":  _handle_general_chat,
         "create_folder": _handle_create_folder,
     }
-    return handlers.get(intent, _handle_general_chat)(intent_data, context=context)
+    return handlers.get(intent, _handle_general_chat)(intent_data, context=context, ctx=ctx or [])
 
 
-# ── Intent handlers ────────────────────────────────────────────────────────────
+# ── Handlers ───────────────────────────────────────────────────────────────────
 
-def _handle_create_file(intent_data: dict, context: dict = None) -> dict:
+def _handle_create_file(intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     entities    = intent_data.get("entities", {})
     filename    = safe_filename(entities.get("filename") or "document.txt")
     description = entities.get("description", "")
@@ -80,16 +80,15 @@ def _handle_create_file(intent_data: dict, context: dict = None) -> dict:
     content = _llm(
         system="You are a helpful writing assistant. Generate the file content requested. "
                "Return ONLY the content — no explanations, no preamble.",
-        user=f"Generate content for a file based on this request:\n{original}\n\n"
-             f"Description: {description}"
+        user=f"Generate content for a file based on this request:\n{original}\nDescription: {description}",
+        ctx=ctx or []
     )
 
     is_text = filename.endswith((".md", ".txt"))
     header  = (f"# Created by ARIA\n# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                f"# Request: {original}\n\n") if is_text else ""
 
-    filepath = safe_path(filename)
-    filepath.write_text(header + content, encoding="utf-8")
+    safe_path(filename).write_text(header + content, encoding="utf-8")
 
     return {
         "status": "success",
@@ -100,7 +99,7 @@ def _handle_create_file(intent_data: dict, context: dict = None) -> dict:
     }
 
 
-def _handle_write_code(intent_data: dict, context: dict = None) -> dict:
+def _handle_write_code(intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     entities = intent_data.get("entities", {})
     language = entities.get("language") or "Python"
     filename = safe_filename(entities.get("filename") or f"code_{datetime.now().strftime('%H%M%S')}.py")
@@ -117,13 +116,13 @@ def _handle_write_code(intent_data: dict, context: dict = None) -> dict:
 
     code = _llm(
         system=f"You are an expert {language} developer. Write clean, well-commented, "
-               "production-quality code with docstrings and type hints where appropriate. "
+               "production-quality code with docstrings and type hints. "
                "Return ONLY the code — no markdown fences, no explanations.",
-        user=original
+        user=original,
+        ctx=ctx or []
     )
 
-    filepath = safe_path(filename)
-    filepath.write_text(code, encoding="utf-8")
+    safe_path(filename).write_text(code, encoding="utf-8")
 
     return {
         "status": "success",
@@ -134,7 +133,7 @@ def _handle_write_code(intent_data: dict, context: dict = None) -> dict:
     }
 
 
-def _handle_summarize(intent_data: dict, context: dict = None) -> dict:
+def _handle_summarize(intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     entities = intent_data.get("entities", {})
     content  = entities.get("content", "")
     original = intent_data.get("original_text", "")
@@ -144,16 +143,15 @@ def _handle_summarize(intent_data: dict, context: dict = None) -> dict:
         content = original
 
     summary = _llm(
-        system="You are a concise summarization expert. Provide a clear, well-structured summary. "
-               "Highlight key points accurately.",
-        user=f"Summarize the following:\n\n{content}"
+        system="You are a concise summarization expert. Provide a clear, well-structured summary.",
+        user=f"Summarize the following:\n\n{content}",
+        ctx=ctx or []
     )
 
     files_created = []
     compound = intent_data.get("compound_intents", [])
     if "create_file" in compound or "save" in original.lower():
-        filepath = safe_path(filename)
-        filepath.write_text(
+        safe_path(filename).write_text(
             f"Summary by ARIA\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n{summary}",
             encoding="utf-8"
         )
@@ -168,13 +166,15 @@ def _handle_summarize(intent_data: dict, context: dict = None) -> dict:
     }
 
 
-def _handle_general_chat(intent_data: dict, context: dict = None) -> dict:
+def _handle_general_chat(intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     original = intent_data.get("original_text", "")
 
     response = _llm(
         system="You are ARIA, a helpful and knowledgeable AI voice assistant. "
-               "Answer questions clearly and concisely. Be friendly and direct.",
-        user=original
+               "Answer questions clearly and concisely. Be friendly and direct. "
+               "You have memory of prior conversation turns — use them to give contextual answers.",
+        user=original,
+        ctx=ctx or []
     )
 
     return {
@@ -186,7 +186,7 @@ def _handle_general_chat(intent_data: dict, context: dict = None) -> dict:
     }
 
 
-def _handle_create_folder(intent_data: dict, context: dict = None) -> dict:
+def _handle_create_folder(intent_data: dict, context: dict = None, ctx: list = None) -> dict:
     entities    = intent_data.get("entities", {})
     folder_name = safe_filename(entities.get("filename") or f"folder_{datetime.now().strftime('%H%M%S')}")
 
@@ -203,10 +203,13 @@ def _handle_create_folder(intent_data: dict, context: dict = None) -> dict:
     }
 
 
-# ── Groq LLM helper ───────────────────────────────────────────────────────────
+# ── Groq LLM helper ────────────────────────────────────────────────────────────
 
-def _llm(system: str, user: str) -> str:
-    """Call Groq chat completions. Model is read from env set by the UI."""
+def _llm(system: str, user: str, ctx: list = None) -> str:
+    """
+    Call Groq with optional chat context for memory.
+    ctx: list of prior {role, content} messages injected between system and user.
+    """
     try:
         from groq import Groq
     except ImportError:
@@ -218,14 +221,17 @@ def _llm(system: str, user: str) -> str:
 
     model = os.getenv("ARIA_LLM_MODEL", "llama-3.1-8b-instant")
 
+    # Build message list: system → context history → current user request
+    messages = [{"role": "system", "content": system}]
+    if ctx:
+        messages.extend(ctx[-20:])   # last 10 turns
+    messages.append({"role": "user", "content": user})
+
     try:
-        client = Groq(api_key=api_key)
+        client   = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user",   "content": user},
-            ],
+            messages=messages,
             temperature=0.7,
             max_tokens=2048,
         )
