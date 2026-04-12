@@ -54,11 +54,6 @@ h1,h2,h3{font-family:'Space Mono',monospace;}
 /* Red cancel button */
 .cancel-btn>button{background:#7f1d1d!important;color:#fca5a5!important;}
 hr{border-color:var(--border);margin:24px 0;}
-/* Setup screen */
-.setup-wrap{max-width:480px;margin:80px auto 0;text-align:center;}
-.setup-logo{font-family:'Space Mono',monospace;font-size:48px;font-weight:700;color:#7c6af7;letter-spacing:-2px;}
-.setup-sub{font-size:14px;color:#6b6b8a;margin:8px 0 40px;}
-.setup-card{background:#111118;border:1px solid #2a2a3a;border-radius:16px;padding:32px;}
 /* Confirm modal overlay */
 .confirm-wrap{background:#111118;border:1px solid #5a3e00;border-radius:12px;padding:24px;margin:24px 0;}
 .confirm-title{font-family:'Space Mono',monospace;font-size:13px;color:#fbbf24;margin-bottom:12px;}
@@ -76,7 +71,6 @@ hr{border-color:var(--border);margin:24px 0;}
 
 # ── Session state ──────────────────────────────────────────────────────────────
 for key, default in [
-    ("groq_api_key", os.getenv("GROQ_API_KEY", "")),
     ("history", []),
     ("last_result", None),
     ("pending_confirmation", None),
@@ -87,47 +81,6 @@ for key, default in [
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SCREEN 1 — API KEY SETUP (shown once, until key is entered)
-# ══════════════════════════════════════════════════════════════════════════════
-if not st.session_state.groq_api_key:
-    st.markdown("""
-    <div class='setup-wrap'>
-        <div class='setup-logo'>ARIA</div>
-        <div class='setup-sub'>Autonomous Reasoning & Interaction Agent</div>
-        <div class='setup-card'>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='font-size:15px;font-weight:600;margin-bottom:6px;'>Enter your Groq API Key</div>", unsafe_allow_html=True)
-    st.markdown("<div style='font-size:13px;color:#6b6b8a;margin-bottom:20px;'>Your key is stored only in this browser session and never sent anywhere except Groq's API.</div>", unsafe_allow_html=True)
-
-    key_input = st.text_input(
-        "Groq API Key",
-        type="password",
-        placeholder="gsk_...",
-        label_visibility="collapsed"
-    )
-    st.markdown("<div style='font-size:12px;color:#6b6b8a;margin-top:8px;'>Don't have one? Get a free key at <a href='https://console.groq.com' target='_blank' style='color:#c084fc;'>console.groq.com</a></div>", unsafe_allow_html=True)
-
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    if st.button("Continue →", use_container_width=True):
-        if key_input.strip().startswith("gsk_"):
-            st.session_state.groq_api_key = key_input.strip()
-            os.environ["GROQ_API_KEY"] = key_input.strip()
-            st.rerun()
-        else:
-            st.markdown("<div style='font-size:12px;color:#f87171;margin-top:8px;'>Key should start with <code>gsk_</code> — check and try again.</div>", unsafe_allow_html=True)
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
-    st.stop()
-
-# Key is confirmed — make sure env is set (survives hot-reloads)
-os.environ["GROQ_API_KEY"] = st.session_state.groq_api_key
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SCREEN 2 — MAIN APP
-# ══════════════════════════════════════════════════════════════════════════════
-
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -137,15 +90,6 @@ with st.sidebar:
     </div>
     <div style='margin-bottom:16px;'><div class='groq-badge'>⚡ Powered by Groq API</div></div>
     """, unsafe_allow_html=True)
-
-    st.markdown("<div style='font-size:11px;color:#34d399;margin-bottom:16px;'>✓ API key active</div>", unsafe_allow_html=True)
-
-    if st.button("Sign out / change key", use_container_width=True):
-        st.session_state.groq_api_key = ""
-        os.environ.pop("GROQ_API_KEY", None)
-        st.session_state.last_result = None
-        st.session_state.pending_confirmation = None
-        st.rerun()
 
     st.markdown("---")
     st.markdown("**LLM Model**")
@@ -193,6 +137,7 @@ with col_status:
     <div style='text-align:right;padding-top:14px;'>
         <span class='tag tag-success'>● READY</span>
         <div style='font-family:Space Mono,monospace;font-size:10px;color:#6b6b8a;margin-top:4px;'>groq / {llm_model}</div>
+        <div style='font-family:Space Mono,monospace;font-size:10px;color:#6b6b8a;'>whisper-large-v3</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("---")
